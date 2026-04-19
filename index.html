@@ -328,17 +328,17 @@
                 <h3 style="color: var(--honored-color)">Honored One</h3>
                 <p>A master of space manipulation.</p>
                 <ul>
-                    <li><span>Passive:</span> 25% chance Lapse: Blue adds 25 DMG & Stun</li>
-                    <li><span>Rapid Punches:</span> 25 DMG</li>
-                    <li><span>Reversal: Red:</span> 40 DMG (3T CD)</li>
-                    <li><span>Lapse: Blue:</span> Stun (5T CD)</li>
+                    <li><span>Passive:</span> Limitless (Skill RNG bonuses)</li>
+                    <li><span>Rapid Punches:</span> 25 DMG (25% for 35)</li>
+                    <li><span>Reversal: Red:</span> 40 DMG (25% for 50)</li>
+                    <li><span>Lapse: Blue:</span> Stun & Next DMG +10 (50% for 25 DMG)</li>
                 </ul>
             </div>
             <div class="char-card card-vessel" onclick="startGame('vessel')">
                 <h3 style="color: var(--vessel-color)">Vessel</h3>
                 <p>A resilient brawler with explosive power.</p>
                 <ul>
-                    <li><span>Passive:</span> Divergent Fist RNG (25% Black Flash, 25% Stun)</li>
+                    <li><span>Passive:</span> Kokusen (Divergent Fist RNG)</li>
                     <li><span>Cursed Strikes:</span> 25 DMG</li>
                     <li><span>Divergent Fist:</span> 35 Base DMG (3T CD)</li>
                     <li><span>Manji Kick:</span> Counter next attack (5T CD)</li>
@@ -348,9 +348,9 @@
                 <h3 style="color: var(--gambler-color)">Restless Gambler</h3>
                 <p>Relies on sheer luck and overwhelming strikes.</p>
                 <ul>
-                    <li><span>Passive:</span> 25% chance Shutter Doors adds +10 DMG</li>
-                    <li><span>Shutter Doors:</span> 25 DMG</li>
-                    <li><span>Rough Energy:</span> 40 DMG (3T CD)</li>
+                    <li><span>Passive:</span> Jackpot (Shutter Doors RNG Counter)</li>
+                    <li><span>Rough Energy:</span> 25 DMG</li>
+                    <li><span>Shutter Doors:</span> 35 DMG (3T CD)</li>
                     <li><span>Fever Breaker:</span> 50 DMG (5T CD)</li>
                 </ul>
             </div>
@@ -361,7 +361,7 @@
                     <li><span>Passive:</span> Totality (Nue/Toad RNG effects)</li>
                     <li><span>Divine Dog:</span> 20 DMG</li>
                     <li><span>Nue:</span> 35 DMG + Shield (3T CD)</li>
-                    <li><span>Toad:</span> Stun (5T CD)</li>
+                    <li><span>Toad:</span> Stun & Next DMG +10 (5T CD)</li>
                 </ul>
             </div>
             <div class="char-card card-perf" onclick="startGame('perfection')">
@@ -468,8 +468,8 @@
                 logClass: 'log-gambler',
                 avatarInitials: 'RG',
                 abilities: [
-                    { id: 'shutter_doors', name: 'Shutter Doors', cd: 0, maxCd: 0 },
-                    { id: 'rough_energy', name: 'Rough Energy', cd: 0, maxCd: 3 },
+                    { id: 'rough_energy', name: 'Rough Energy', cd: 0, maxCd: 0 },
+                    { id: 'shutter_doors', name: 'Shutter Doors', cd: 0, maxCd: 3 },
                     { id: 'fever_breaker', name: 'Fever Breaker', cd: 0, maxCd: 5 }
                 ]
             },
@@ -591,6 +591,7 @@
                 hp: MAX_HP,
                 stunned: 0,
                 counterActive: false,
+                counterType: null,
                 dmgReduction: 0,      // NEW: Damage shield
                 nextAttackBonus: 0,   // NEW: Empower next attack
                 bloodSpheres: 0,      // NEW: Resource for Blood Manipulator
@@ -730,6 +731,7 @@
             // If it's a defensive ability
             if (abilityId === 'manji_kick' || abilityId === 'supernova') {
                 attacker.counterActive = true;
+                attacker.counterType = abilityId === 'manji_kick' ? 'manji' : 'supernova';
                 logMessage(`${attacker.data.name} takes a defensive stance with ${ability.name}!`, attacker.data.logClass);
                 playSoundEffect('hit');
                 setTimeout(passTurn, 1000); 
@@ -739,17 +741,22 @@
             // --- OFFENSIVE ACTION INTERCEPTION (COUNTER) ---
             if (defender.counterActive) {
                 defender.counterActive = false; // Consume counter
+                let cType = defender.counterType;
                 
-                if (defender.data.id === 'blood_manipulator') {
+                if (cType === 'supernova') {
                     attacker.hp -= 30;
                     defender.bloodSpheres = 3;
                     logMessage(`${defender.data.name} counters with Supernova! Deals 30 damage and gains 3 Blood Spheres!`, 'log-blood');
+                } else if (cType === 'shutter') {
+                    attacker.hp -= 40;
+                    logMessage(`JACKPOT! ${defender.data.name} counters with Shutter Doors and deals 40 damage!`, 'log-jackpot');
+                    playVFX(defender, 'jackpot');
                 } else {
                     attacker.hp -= 40; 
                     logMessage(`${defender.data.name} counters with Manji Kick and deals 40 damage!`, 'log-counter');
                 }
                 
-                playVFX(defender, 'counter');
+                if (cType !== 'shutter') playVFX(defender, 'counter');
                 playVFX(attacker, 'shake');
                 playSoundEffect('bf');
                 
@@ -758,6 +765,7 @@
             }
 
             // --- EXECUTE SPECIFIC ABILITY ---
+            // --- EXECUTE SPECIFIC ABILITY ---
             let dmg = 0;
             let logText = "";
             let logStyle = 'log-normal';
@@ -765,29 +773,39 @@
             switch(abilityId) {
                 // HONORED ONE
                 case 'rapid_punches':
-                    dmg = 25;
-                    logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
+                    if (Math.random() < 0.25) {
+                        dmg = 35;
+                        logText = `Limitless proc! ${attacker.data.name} deals ${dmg} damage with ${ability.name}!`;
+                        logStyle = 'log-honored';
+                    } else {
+                        dmg = 25;
+                        logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
+                    }
                     playSoundEffect('hit');
                     break;
                 case 'red':
-                    dmg = 40;
-                    logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
+                    if (Math.random() < 0.25) {
+                        dmg = 50;
+                        logText = `Limitless proc! ${attacker.data.name} deals ${dmg} damage with ${ability.name}!`;
+                        logStyle = 'log-honored';
+                    } else {
+                        dmg = 40;
+                        logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
+                    }
                     playSoundEffect('hit');
                     break;
                 case 'blue':
-                    if (Math.random() < 0.25) {
+                    defender.stunned = 1;
+                    attacker.nextAttackBonus = 10;
+                    if (Math.random() < 0.50) {
                         dmg = 25;
-                        defender.stunned = 1;
-                        logText = `Honored One uses Lapse: Blue, dealing 25 damage and stunning the enemy!`;
+                        logText = `Limitless proc! Lapse: Blue deals 25 damage, stuns, and empowers next attack!`;
                         logStyle = 'log-blue-rng';
-                        playVFX(attacker, 'teleport');
-                        playSoundEffect('blue');
                     } else {
-                        defender.stunned = 1;
-                        logText = `${attacker.data.name} stuns the enemy with ${ability.name}!`;
-                        playVFX(attacker, 'teleport');
-                        playSoundEffect('blue');
+                        logText = `${attacker.data.name} stuns the enemy and empowers next attack with ${ability.name}!`;
                     }
+                    playVFX(attacker, 'teleport');
+                    playSoundEffect('blue');
                     break;
 
                 // VESSEL
@@ -817,23 +835,26 @@
                     break;
 
                 // RESTLESS GAMBLER
+                case 'rough_energy':
+                    dmg = 25;
+                    logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
+                    playSoundEffect('hit');
+                    break;
                 case 'shutter_doors':
                     if (Math.random() < 0.25) {
-                        dmg = 35; // 25 + 10
-                        logText = `JACKPOT! 35 damage with Shutter Doors!`;
+                        attacker.counterActive = true;
+                        attacker.counterType = 'shutter';
+                        logText = `JACKPOT! Shutter Doors turned into a Counter stance!`;
                         logStyle = 'log-jackpot';
                         playVFX(attacker, 'jackpot');
                         playSoundEffect('jackpot');
+                        setTimeout(passTurn, 1000);
+                        return;
                     } else {
-                        dmg = 25;
+                        dmg = 35;
                         logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
                         playSoundEffect('hit');
                     }
-                    break;
-                case 'rough_energy':
-                    dmg = 40;
-                    logText = `${attacker.data.name} deals ${dmg} damage with ${ability.name}`;
-                    playSoundEffect('hit');
                     break;
                 case 'fever_breaker':
                     dmg = 50;
@@ -850,10 +871,11 @@
                 case 'nue':
                     if (Math.random() < 0.30) {
                         defender.stunned = 1;
+                        dmg = 35;
                         ability.cd = 0; // Refund Nue CD
                         let toad = attacker.abilities.find(a => a.id === 'toad');
                         if (toad) toad.cd = toad.maxCd; // Put Toad on CD
-                        logText = `Nue stuns the enemy! Toad goes on cooldown!`;
+                        logText = `Totality proc! Nue deals ${dmg} damage and stuns! Toad goes on cooldown!`;
                         logStyle = 'log-ten';
                         playVFX(attacker, 'teleport');
                         playSoundEffect('blue');
@@ -866,12 +888,14 @@
                     break;
                 case 'toad':
                     defender.stunned = 1;
+                    attacker.nextAttackBonus = 10;
                     if (Math.random() < 0.30) {
-                        dmg = 15;
-                        logText = `Toad stuns the enemy and deals an extra ${dmg} damage!`;
+                        dmg = 25;
+                        logText = `Totality proc! Toad stuns, empowers next attack, and deals an extra ${dmg} damage!`;
+                        logStyle = 'log-ten';
                         playSoundEffect('hit');
                     } else {
-                        logText = `${attacker.data.name} stuns the enemy with ${ability.name}!`;
+                        logText = `${attacker.data.name} stuns the enemy and empowers next attack with ${ability.name}!`;
                         playVFX(attacker, 'teleport');
                         playSoundEffect('blue');
                     }
@@ -990,6 +1014,7 @@
 
             // 2. Clear previous counter 
             entity.counterActive = false;
+            entity.counterType = null;
 
             updateGameState();
 
